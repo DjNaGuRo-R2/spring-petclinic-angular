@@ -1,0 +1,60 @@
+# R2Devops.io pipeline generation - this aims to be included in your pipeline
+#
+# Inputs:
+#   - List of technologies detected in the project : angular, css, dockerfile, editorconfig, html, ignore list, javascript, json with comments, less, markdown, npm, svg, trivy_dependency, typescript, yaml,
+
+name: R2Devops
+on:
+  push:
+    branches: [ master, r2devops-autopipeline]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  npm-workflow:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: '**/package-lock.json'
+    - run: npm ci
+    - run: npm test --if present
+    - run: npm teste2e --if present
+    - run: npm coverage --if present
+    - run: npm lint --if-present
+    - run: npm build --if-present
+  trivy_scan:
+    name: Trivy Scan docker image
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v3
+        with:
+          push: false
+          tags: ${{ github.repository }}:${{ github.sha }}
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ github.repository }}:${{ github.sha }}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+          # Could use GitHub code scanning in addition, but need a public repository or a license
+          # https://github.com/marketplace/actions/aqua-security-trivy#using-trivy-with-github-code-scanning
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: gitleaks-action
+      uses: zricethezav/gitleaks-action@master
